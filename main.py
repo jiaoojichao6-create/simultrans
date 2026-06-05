@@ -16,7 +16,6 @@ import pipeline.translator
 import pipeline.tts
 import pipeline.glossary
 import utils.config
-import settings_window
 
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
