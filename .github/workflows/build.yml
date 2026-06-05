@@ -22,29 +22,28 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build EXE
+    - name: Build EXE (onedir mode, most reliable for complex apps)
       run: |
-        pyinstaller --onefile --windowed --name "Simultrans" `
+        pyinstaller --onedir --windowed --name "Simultrans" `
           --hidden-import PyQt5.sip `
-          --hidden-import pipeline.controller `
-          --hidden-import pipeline.vad `
-          --hidden-import pipeline.asr `
-          --hidden-import pipeline.translator `
-          --hidden-import pipeline.tts `
-          --hidden-import pipeline.glossary `
-          --hidden-import audio.capture `
-          --hidden-import audio.playback `
-          --hidden-import utils.config `
           --hidden-import webrtcvad `
           --hidden-import soundfile `
-          --add-data "audio/*.py;audio" `
-          --add-data "pipeline/*.py;pipeline" `
-          --add-data "utils/*.py;utils" `
+          --collect-submodules pipeline `
+          --collect-submodules audio `
+          --collect-submodules utils `
           main.py
+        echo "=== Build output ==="
+        dir dist\Simultrans
+
+    - name: Compress to zip
+      run: |
+        cd dist
+        powershell Compress-Archive -Path Simultrans -DestinationPath Simultrans.zip
+        dir Simultrans.zip
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: Simultrans-Windows
-        path: dist/Simultrans.exe
+        path: dist/Simultrans.zip
         overwrite: true
