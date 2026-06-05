@@ -6,6 +6,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
 import os
+import sounddevice as sd
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
 from pipeline.controller import PipelineController
@@ -130,28 +131,103 @@ class MainWindow(QMainWindow):
         self._config_panel.setLayout(config_layout)
         layout.addWidget(self._config_panel)
 
-        # ===== Audio device selection =====
-        dev_layout = QVBoxLayout()
-        dev_layout.setSpacing(4)
-        in_row = QHBoxLayout()
-        in_row.addWidget(QLabel("音频输入:"))
+        # ===== Audio device selection (OBS/Zoom style) =====
+        audio_group = QGroupBox("音频设备")
+        audio_group.setFont(QFont("Microsoft YaHei", 10))
+        audio_layout = QVBoxLayout()
+        audio_layout.setSpacing(6)
+
+        # Input section
+        in_section = QHBoxLayout()
+        in_section.addWidget(QLabel("🎤 输入:"))
         self._in_dev_combo = QComboBox()
-        self._in_dev_combo.setMinimumWidth(350)
+        self._in_dev_combo.setMinimumWidth(400)
         self._in_dev_combo.currentIndexChanged.connect(self._on_input_device_changed)
-        in_row.addWidget(self._in_dev_combo)
-        in_row.addStretch()
-        dev_layout.addLayout(in_row)
-        out_row = QHBoxLayout()
-        out_row.addWidget(QLabel("音频输出:"))
+        in_section.addWidget(self._in_dev_combo, 1)
+        self._in_test_btn = QPushButton("▶ 测试")
+        self._in_test_btn.setFixedWidth(50)
+        self._in_test_btn.setToolTip("对着麦克风说话，观察电平变化")
+        self._in_test_btn.clicked.connect(self._test_input)
+        in_section.addWidget(self._in_test_btn)
+        audio_layout.addLayout(in_section)
+
+        # Output section
+        out_section = QHBoxLayout()
+        out_section.addWidget(QLabel("🔊 输出:"))
         self._out_dev_combo = QComboBox()
-        self._out_dev_combo.setMinimumWidth(350)
-        out_row.addWidget(self._out_dev_combo)
+        self._out_dev_combo.setMinimumWidth(400)
+        out_section.addWidget(self._out_dev_combo, 1)
+        self._out_test_btn = QPushButton("🔔")
+        self._out_test_btn.setFixedWidth(50)
+        self._out_test_btn.setToolTip("播放测试音，检查输出设备")
+        self._out_test_btn.clicked.connect(self._test_output)
+        out_section.addWidget(self._out_test_btn)
         self._refresh_btn = QPushButton("🔄 刷新")
         self._refresh_btn.setFixedWidth(60)
         self._refresh_btn.clicked.connect(self._refresh_devices)
-        out_row.addWidget(self._refresh_btn)
-        out_row.addStretch()
-        dev_layout.addLayout(out_row)
+        out_section.addWidget(self._refresh_btn)
+        self._mute_btn = QPushButton("🔊")
+        self._mute_btn.setFixedWidth(35)
+        self._mute_btn.setCheckable(True)
+        self._mute_btn.setToolTip("静音输出")
+        self._mute_btn.clicked.connect(self._toggle_mute)
+        out_section.addWidget(self._mute_btn)
+        audio_layout.addLayout(out_section)
+
+        # Device info + level meters (like OBS)
+        meter_section = QHBoxLayout()
+        # Input meter
+        meter_section.addWidget(QLabel("输入电平:", styleSheet="font-size: 11px;"))
+        self._in_meter = QProgressBar()
+        self._in_meter.setFixedWidth(200)
+        self._in_meter.setMaximum(100)
+        self._in_meter.setTextVisible(False)
+        self._in_meter.setStyleSheet("""
+            QProgressBar { border: 1px solid #ccc; border-radius: 3px; background: #eee; height: 14px; }
+            QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 #4CAF50, stop:0.6 #8BC34A, stop:0.8 #FFEB3B, stop:1 #f44336); }
+        """)
+        meter_section.addWidget(self._in_meter)
+        # Input level number
+        self._in_level_num = QLabel("0")
+        self._in_level_num.setFixedWidth(30)
+        self._in_level_num.setStyleSheet("font-size: 11px; color: #666;")
+        meter_section.addWidget(self._in_level_num)
+
+        meter_section.addSpacing(15)
+
+        # Output meter
+        meter_section.addWidget(QLabel("输出电平:", styleSheet="font-size: 11px;"))
+        self._out_meter = QProgressBar()
+        self._out_meter.setFixedWidth(200)
+        self._out_meter.setMaximum(100)
+        self._out_meter.setTextVisible(False)
+        self._out_meter.setStyleSheet("""
+            QProgressBar { border: 1px solid #ccc; border-radius: 3px; background: #eee; height: 14px; }
+            QProgressBar::chunk { background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                stop:0 #2196F3, stop:0.6 #03A9F4, stop:0.8 #FF9800, stop:1 #f44336); }
+        """)
+        meter_section.addWidget(self._out_meter)
+        self._out_level_num = QLabel("0")
+        self._out_level_num.setFixedWidth(30)
+        self._out_level_num.setStyleSheet("font-size: 11px; color: #666;")
+        meter_section.addWidget(self._out_level_num)
+
+        meter_section.addStretch()
+        audio_layout.addLayout(meter_section)
+
+        # Device status label
+        self._dev_info_label = QLabel("")
+        self._dev_info_label.setStyleSheet("color: #999; font-size: 10px;")
+        audio_layout.addWidget(self._dev_info_label)
+
+        audio_group.setLayout(audio_layout)
+        layout.addWidget(audio_group)
+
+        # ===== Language & Control =====
+        ctrl_group = QGroupBox("翻译控制")
+        ctrl_group.setFont(QFont("Microsoft YaHei", 10))
+        ctrl_layout = QHBoxLayout()
         layout.addLayout(dev_layout)
 
         # ===== Language controls =====
@@ -184,44 +260,6 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(self._start_btn)
         ctrl_layout.addStretch()
         layout.addLayout(ctrl_layout)
-
-        # ===== Volume =====
-        vol_layout = QHBoxLayout()
-        vol_layout.addWidget(QLabel("源音量:"))
-        self._src_vol = QSlider(Qt.Horizontal)
-        self._src_vol.setRange(0, 100)
-        self._src_vol.setValue(self.cfg.get("source_volume", 80))
-        self._src_vol.setFixedWidth(100)
-        vol_layout.addWidget(self._src_vol)
-        vol_layout.addSpacing(10)
-        vol_layout.addWidget(QLabel("输出音量:"))
-        self._out_vol = QSlider(Qt.Horizontal)
-        self._out_vol.setRange(0, 100)
-        self._out_vol.setValue(self.cfg.get("output_volume", 80))
-        self._out_vol.setFixedWidth(100)
-        vol_layout.addWidget(self._out_vol)
-        vol_layout.addStretch()
-        layout.addLayout(vol_layout)
-
-        # ===== Level indicators =====
-        level_layout = QHBoxLayout()
-        level_layout.addWidget(QLabel("输入电平:"))
-        self._in_level = QProgressBar()
-        self._in_level.setFixedWidth(150)
-        self._in_level.setMaximum(100)
-        self._in_level.setTextVisible(False)
-        self._in_level.setStyleSheet("QProgressBar::chunk { background-color: #4CAF50; }")
-        level_layout.addWidget(self._in_level)
-        level_layout.addSpacing(20)
-        level_layout.addWidget(QLabel("输出电平:"))
-        self._out_level = QProgressBar()
-        self._out_level.setFixedWidth(150)
-        self._out_level.setMaximum(100)
-        self._out_level.setTextVisible(False)
-        self._out_level.setStyleSheet("QProgressBar::chunk { background-color: #2196F3; }")
-        level_layout.addWidget(self._out_level)
-        level_layout.addStretch()
-        layout.addLayout(level_layout)
 
         # ===== Status =====
         self._status_label = QLabel("⏹ 就绪, 选择设备后点击开始同传")
@@ -259,9 +297,19 @@ class MainWindow(QMainWindow):
         self._signals.status.connect(self._update_status)
         self._signals.original_text.connect(lambda t: self._orig_text.append(t))
         self._signals.translated_text.connect(lambda t: self._trans_text.append(t))
-        self._signals.capture_level.connect(lambda v: self._in_level.setValue(int(min(v * 200, 100))))
-        self._signals.playback_level.connect(lambda v: self._out_level.setValue(int(min(v * 200, 100))))
+        self._signals.capture_level.connect(self._update_input_meter)
+        self._signals.playback_level.connect(self._update_output_meter)
         self._signals.lang_detected.connect(self._on_lang_detected)
+
+    def _update_input_meter(self, level):
+        val = int(min(level * 250, 100))
+        self._in_meter.setValue(val)
+        self._in_level_num.setText(str(val))
+
+    def _update_output_meter(self, level):
+        val = int(min(level * 250, 100))
+        self._out_meter.setValue(val)
+        self._out_level_num.setText(str(val))
 
     def _toggle_config(self):
         self._config_visible = not self._config_visible
@@ -311,10 +359,17 @@ class MainWindow(QMainWindow):
         capture = AudioCapture()
         in_devices = capture.get_all_input_devices()
         self._device_map = []
+        self._in_dev_info = []
         last_input = None
         for i, name, dtype, info in in_devices:
-            self._in_dev_combo.addItem(f"{'🔴' if dtype == 'loopback' else '🎤'} {name}")
+            sr = info.get("default_samplerate", "?")
+            ch = info.get("max_input_channels", "?")
+            label = name
+            if len(label) > 55:
+                label = label[:52] + "..."
+            self._in_dev_combo.addItem(f"{'🔴' if dtype == 'loopback' else '🎤'} {label}")
             self._device_map.append((i, dtype == "loopback"))
+            self._in_dev_info.append(f"{sr}Hz / {ch}ch")
             if dtype == "input":
                 last_input = len(self._device_map) - 1
         if last_input is not None:
@@ -324,15 +379,27 @@ class MainWindow(QMainWindow):
         self._out_dev_combo.clear()
         out_devices = AudioPlayback.get_output_devices()
         self._out_dev_map = []
+        self._out_dev_info = []
         for dev_id, name in out_devices:
-            self._out_dev_combo.addItem(f"🔊 {name}")
+            info = sd.query_devices(dev_id)
+            sr = info.get("default_samplerate", "?") if info else "?"
+            ch = info.get("max_output_channels", "?") if info else "?"
+            label = name
+            if len(label) > 55:
+                label = label[:52] + "..."
+            self._out_dev_combo.addItem(f"🔊 {label}")
             self._out_dev_map.append(dev_id)
-        self._status_label.setText(f"检测到 {self._in_dev_combo.count()} 输入设备, {self._out_dev_combo.count()} 输出设备")
+            self._out_dev_info.append(f"{sr}Hz / {ch}ch")
+        self._status_label.setText(
+            f"检测到 {self._in_dev_combo.count()} 输入设备, {self._out_dev_combo.count()} 输出设备"
+        )
 
     def _on_input_device_changed(self):
         idx = self._in_dev_combo.currentIndex()
         if 0 <= idx < len(self._device_map):
             self._input_device_id, self._loopback_mode = self._device_map[idx]
+            if idx < len(self._in_dev_info):
+                self._dev_info_label.setText(f"输入: {self._in_dev_info[idx]}")
 
     def _setup_audio(self):
         from audio.processor import AudioProcessor
@@ -340,6 +407,51 @@ class MainWindow(QMainWindow):
         self._capture = AudioCapture(callback=self._on_audio_chunk)
         self._capture.set_processor(self._audio_processor)
         self._playback = AudioPlayback()
+        self._muted = False
+
+    def _toggle_mute(self):
+        self._muted = self._mute_btn.isChecked()
+        self._mute_btn.setText("🔇" if self._muted else "🔊")
+
+    def _test_output(self):
+        """Play a short test tone."""
+        import numpy as np
+        import time
+        sr = 24000
+        t = np.linspace(0, 0.3, int(sr * 0.3))
+        tone = (np.sin(2 * np.pi * 440 * t) * 0.3).astype(np.float32)
+        try:
+            out_idx = self._out_dev_combo.currentIndex()
+            out_dev_id = self._out_dev_map[out_idx] if 0 <= out_idx < len(self._out_dev_map) else None
+            with sd.OutputStream(device=out_dev_id, samplerate=sr, channels=1,
+                                 dtype="float32", latency="low") as stream:
+                stream.write(tone)
+        except Exception as e:
+            QMessageBox.warning(self, "测试失败", f"输出设备测试失败: {str(e)}")
+
+    def _test_input(self):
+        """Show input level for 3 seconds to test microphone."""
+        QMessageBox.information(self, "输入测试", "对着麦克风说话，观察电平表跳动\n3秒后自动结束测试")
+        try:
+            in_id = self._input_device_id
+            if in_id is None:
+                return
+            import time
+            t_end = time.time() + 3
+            def test_cb(indata, frames, time_info, status):
+                if time.time() > t_end:
+                    raise sd.CallbackStop()
+                chunk = indata.copy().flatten()
+                if self._audio_processor:
+                    chunk = self._audio_processor.process(chunk)
+                level = float(np.sqrt(np.mean(chunk ** 2)))
+                self._signals.capture_level.emit(level)
+            with sd.InputStream(device=in_id, samplerate=16000, channels=1,
+                                 dtype="float32", latency="low", callback=test_cb):
+                while time.time() < t_end:
+                    QApplication.processEvents()
+        except:
+            pass
 
     def _setup_pipeline(self):
         self._pipeline = PipelineController(
