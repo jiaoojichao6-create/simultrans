@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Explicit imports for PyInstaller - forces all modules to be included
 import audio.capture
 import audio.playback
+import audio.processor
 import pipeline.controller
 import pipeline.vad
 import pipeline.asr

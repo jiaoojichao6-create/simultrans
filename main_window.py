@@ -335,7 +335,10 @@ class MainWindow(QMainWindow):
             self._input_device_id, self._loopback_mode = self._device_map[idx]
 
     def _setup_audio(self):
+        from audio.processor import AudioProcessor
+        self._audio_processor = AudioProcessor()
         self._capture = AudioCapture(callback=self._on_audio_chunk)
+        self._capture.set_processor(self._audio_processor)
         self._playback = AudioPlayback()
 
     def _setup_pipeline(self):

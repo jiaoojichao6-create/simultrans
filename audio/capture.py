@@ -5,7 +5,7 @@ import threading
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
-BLOCK_SIZE = 1600  # 100ms @ 16kHz
+BLOCK_SIZE = 1600
 DTYPE = "float32"
 
 class AudioCapture:
@@ -15,6 +15,25 @@ class AudioCapture:
         self.running = False
         self._level = 0.0
         self._current_device = None
+        self._processor = None
+        self._init_com()
+
+    def set_processor(self, processor):
+        self._processor = processor
+
+    @staticmethod
+    def _init_com():
+        import sys
+        if sys.platform == "win32":
+            try:
+                import pythoncom
+                pythoncom.CoInitialize()
+            except ImportError:
+                try:
+                    import comtypes
+                    comtypes.CoInitialize()
+                except ImportError:
+                    pass
 
     @staticmethod
     def get_all_input_devices():
@@ -71,6 +90,9 @@ class AudioCapture:
         if not self.running:
             return
         chunk = indata.copy().flatten()
+        # Apply audio processing (noise gate, AGC, high-pass)
+        if self._processor is not None:
+            chunk = self._processor.process(chunk)
         self._level = float(np.sqrt(np.mean(chunk ** 2)))
         if self.callback:
             self.callback(chunk)
