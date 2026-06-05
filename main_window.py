@@ -23,9 +23,10 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.cfg = load_config()
         self.setWindowTitle("同传翻译系统 v1.0")
-        self.setMinimumSize(700, 600)
+        self.setMinimumSize(700, 620)
         self._input_device_id = None
         self._loopback_mode = False
+        self._output_device_id = None
         self._setup_ui()
         self._setup_audio()
         self._setup_pipeline()
@@ -53,17 +54,29 @@ class MainWindow(QMainWindow):
         layout.addLayout(title_layout)
 
         # Audio input device selection
-        dev_layout = QHBoxLayout()
-        dev_layout.addWidget(QLabel("音频输入:"))
-        self._device_combo = QComboBox()
-        self._device_combo.setMinimumWidth(350)
-        self._device_combo.currentIndexChanged.connect(self._on_device_changed)
-        dev_layout.addWidget(self._device_combo)
+        dev_layout = QVBoxLayout()
+        dev_layout.setSpacing(4)
+        # Input row
+        in_row = QHBoxLayout()
+        in_row.addWidget(QLabel("音频输入:"))
+        self._in_dev_combo = QComboBox()
+        self._in_dev_combo.setMinimumWidth(350)
+        self._in_dev_combo.currentIndexChanged.connect(self._on_input_device_changed)
+        in_row.addWidget(self._in_dev_combo)
+        in_row.addStretch()
+        dev_layout.addLayout(in_row)
+        # Output row
+        out_row = QHBoxLayout()
+        out_row.addWidget(QLabel("音频输出:"))
+        self._out_dev_combo = QComboBox()
+        self._out_dev_combo.setMinimumWidth(350)
+        out_row.addWidget(self._out_dev_combo)
         self._refresh_btn = QPushButton("🔄 刷新")
         self._refresh_btn.setFixedWidth(60)
         self._refresh_btn.clicked.connect(self._refresh_devices)
-        dev_layout.addWidget(self._refresh_btn)
-        dev_layout.addStretch()
+        out_row.addWidget(self._refresh_btn)
+        out_row.addStretch()
+        dev_layout.addLayout(out_row)
         layout.addLayout(dev_layout)
 
         # Controls row
@@ -177,30 +190,46 @@ class MainWindow(QMainWindow):
         self._signals.playback_level.connect(lambda v: self._out_level.setValue(int(min(v * 200, 100))))
 
     def _refresh_devices(self):
-        """Scan and populate audio input device dropdown."""
-        self._device_combo.clear()
+        """Scan and populate audio device dropdowns."""
+        # --- Input devices ---
+        self._in_dev_combo.clear()
         capture = AudioCapture()
-        devices = capture.get_all_input_devices()
+        in_devices = capture.get_all_input_devices()
 
         self._device_map = []  # (device_id, is_loopback)
         last_input = None
-        for i, name, dtype, info in devices:
+        for i, name, dtype, info in in_devices:
             display = f"{'🔴' if dtype == 'loopback' else '🎤'} {name}"
-            self._device_combo.addItem(display)
+            self._in_dev_combo.addItem(display)
             self._device_map.append((i, dtype == "loopback"))
             if dtype == "input":
                 last_input = len(self._device_map) - 1
 
-        # Select first input device by default
         if last_input is not None:
-            self._device_combo.setCurrentIndex(last_input)
-        self._on_device_changed()
+            self._in_dev_combo.setCurrentIndex(last_input)
+        self._on_input_device_changed()
 
-        count = self._device_combo.count()
-        self._status_label.setText(f"检测到 {count} 个音频输入设备，请选择")
+        # --- Output devices ---
+        self._out_dev_combo.clear()
+        out_devices = AudioPlayback.get_output_devices()
+        self._out_dev_map = []
+        default_idx = 0
+        for i, (dev_id, name) in enumerate(out_devices):
+            display = f"🔊 {name}"
+            self._out_dev_combo.addItem(display)
+            self._out_dev_map.append(dev_id)
+            if "耳机" in name or "headphone" in name.lower() or "speaker" in name.lower():
+                default_idx = i
+        # Try to select headphones/speakers by default
+        if out_devices:
+            self._out_dev_combo.setCurrentIndex(default_idx)
 
-    def _on_device_changed(self):
-        idx = self._device_combo.currentIndex()
+        in_count = self._in_dev_combo.count()
+        out_count = self._out_dev_combo.count()
+        self._status_label.setText(f"检测到 {in_count} 个输入设备，{out_count} 个输出设备")
+
+    def _on_input_device_changed(self):
+        idx = self._in_dev_combo.currentIndex()
         if 0 <= idx < len(self._device_map):
             self._input_device_id, self._loopback_mode = self._device_map[idx]
 
@@ -236,12 +265,14 @@ class MainWindow(QMainWindow):
             self._stop_pipeline()
 
     def _start_pipeline(self):
-        if self._input_device_id is None:
-            QMessageBox.warning(self, "提示", "请先选择一个音频输入设备")
+        if self._input_device_id is None or self._out_dev_combo.count() == 0:
+            QMessageBox.warning(self, "提示", "请先选择音频输入和输出设备")
             return
+        out_idx = self._out_dev_combo.currentIndex()
+        out_dev_id = self._out_dev_map[out_idx] if 0 <= out_idx < len(self._out_dev_map) else None
         try:
             self._capture.start(device_id=self._input_device_id, loopback=self._loopback_mode)
-            self._playback.start()
+            self._playback.start(device_id=out_dev_id)
             self._pipeline.start()
             self._running = True
             self._start_btn.setText("⏹ 停止同传")
@@ -250,8 +281,9 @@ class MainWindow(QMainWindow):
                              padding: 8px 20px; border-radius: 5px; }
                 QPushButton:hover { background-color: #da190b; }
             """)
-            name = self._device_combo.currentText()
-            self._status_label.setText(f"🎧 正在从「{name}」同传翻译...")
+            in_name = self._in_dev_combo.currentText()
+            out_name = self._out_dev_combo.currentText()
+            self._status_label.setText(f"🎧 输入「{in_name}」→ 输出「{out_name}」开始同传...")
         except Exception as e:
             QMessageBox.critical(self, "启动失败", f"音频设备启动失败:\n{str(e)}")
 

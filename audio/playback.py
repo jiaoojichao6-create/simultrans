@@ -16,6 +16,12 @@ class AudioPlayback:
         self._lock = threading.Lock()
         self._level = 0.0
 
+    @staticmethod
+    def get_output_devices():
+        """Return all devices that can be used for output."""
+        devices = sd.query_devices()
+        return [(i, d["name"]) for i, d in enumerate(devices) if d["max_output_channels"] > 0]
+
     def enqueue(self, audio: np.ndarray):
         with self._lock:
             self.buffer.append(audio)
