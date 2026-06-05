@@ -23,18 +23,13 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
 
-    - name: Build EXE (onedir mode - fixes torch DLL issue)
+    - name: Build EXE
       run: |
-        pyinstaller --onedir --windowed --name "Simultrans" main.py
-
-    - name: Compress output folder
-      run: |
-        cd dist
-        powershell Compress-Archive -Path Simultrans -DestinationPath Simultrans.zip
+        pyinstaller --onefile --windowed --name "Simultrans" main.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
         name: Simultrans-Windows
-        path: dist/Simultrans.zip
+        path: dist/Simultrans.exe
         overwrite: true

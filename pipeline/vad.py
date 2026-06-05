@@ -1,85 +1,79 @@
-"""Voice Activity Detection using Silero VAD."""
+"""Voice Activity Detection using WebRTC VAD (no PyTorch dependency)."""
+import webrtcvad
 import numpy as np
-import torch
-import torchaudio
+import struct
 import threading
-from collections import deque
 
 SAMPLE_RATE = 16000
-SPEECH_THRESHOLD = 0.5
-MIN_SILENCE_MS = 500   # ms of silence to end an utterance
-MIN_SPEECH_MS = 300    # ms of speech to start an utterance
-PADDING_MS = 300       # extra audio before/after utterance
+FRAME_MS = 30
+FRAME_SIZE = int(SAMPLE_RATE * FRAME_MS / 1000)  # 480 samples @ 16kHz
+MIN_SPEECH_MS = 400     # ms of continuous speech to start utterance
+MIN_SILENCE_MS = 500    # ms of silence to end utterance
 
 class VADProcessor:
     def __init__(self, on_speech=None, on_utterance=None):
         """
-        on_speech(speech_chunk: np.ndarray) - called for each speech segment
-        on_utterance(full_utterance: np.ndarray) - called when utterance ends
+        on_speech(chunk) - called for each speech segment
+        on_utterance(audio) - called when utterance ends
         """
         self.on_speech = on_speech
         self.on_utterance = on_utterance
-        self.model = None
-        self._load_model()
-        self._buffer = deque()
+        self._vad = webrtcvad.Vad(2)  # Aggressiveness: 0-3, 2 is default
+        self._buffer = b""
         self._speech_buffer = []
-        self._is_speech = False
         self._silence_frames = 0
         self._speech_frames = 0
+        self._is_speech = False
+        self._frame_count = 0
         self._lock = threading.Lock()
 
-    def _load_model(self):
-        try:
-            self.model, _ = torch.hub.load(
-                repo_or_dir="snakers4/silero-vad",
-                model="silero_vad",
-                force_reload=False,
-                trust_repo=True,
-            )
-            self.model.eval()
-        except Exception as e:
-            print(f"[VAD] Model load failed: {e}")
-            self.model = None
-
     def process(self, audio_chunk: np.ndarray):
-        if self.model is None:
-            return
         with self._lock:
-            # Convert to tensor
-            audio_tensor = torch.from_numpy(audio_chunk).float()
-            # Get speech probability
-            speech_prob = self.model(audio_tensor, SAMPLE_RATE).item()
-            is_speech = speech_prob > SPEECH_THRESHOLD
-            window_ms = len(audio_chunk) / SAMPLE_RATE * 1000
+            # Convert float32 PCM to int16 PCM
+            int16_chunk = (audio_chunk * 32767).astype(np.int16)
+            self._buffer += int16_chunk.tobytes()
 
-            if is_speech:
-                self._silence_frames = 0
-                self._speech_frames += 1
-                self._speech_buffer.append(audio_chunk)
-                if not self._is_speech and self._speech_frames * window_ms >= MIN_SPEECH_MS:
-                    self._is_speech = True
-                    if self.on_speech:
-                        self.on_speech(np.concatenate(self._speech_buffer))
-            else:
-                self._speech_frames = 0
-                if self._is_speech:
-                    self._silence_frames += 1
-                    self._speech_buffer.append(audio_chunk)
-                    silence_ms = self._silence_frames * window_ms
-                    if silence_ms >= MIN_SILENCE_MS:
-                        # Utterance complete
-                        utterance = np.concatenate(self._speech_buffer)
-                        self._is_speech = False
+            # Process in 30ms frames
+            while len(self._buffer) >= FRAME_SIZE * 2:  # 2 bytes per int16 sample
+                frame = self._buffer[:FRAME_SIZE * 2]
+                self._buffer = self._buffer[FRAME_SIZE * 2:]
+
+                is_speech = False
+                try:
+                    is_speech = self._vad.is_speech(frame, SAMPLE_RATE)
+                except:
+                    pass
+
+                frame_audio = np.frombuffer(frame, dtype=np.int16).astype(np.float32) / 32767.0
+
+                if is_speech:
+                    self._silence_frames = 0
+                    self._speech_frames += 1
+                    self._speech_buffer.append(frame_audio)
+                    if not self._is_speech and self._speech_frames * FRAME_MS >= MIN_SPEECH_MS:
+                        self._is_speech = True
+                        if self.on_speech:
+                            self.on_speech(frame_audio)
+                else:
+                    self._speech_frames = 0
+                    if self._is_speech:
+                        self._silence_frames += 1
+                        self._speech_buffer.append(frame_audio)
+                        if self._silence_frames * FRAME_MS >= MIN_SILENCE_MS:
+                            utterance = np.concatenate(self._speech_buffer)
+                            self._is_speech = False
+                            self._speech_buffer = []
+                            self._silence_frames = 0
+                            self._speech_frames = 0
+                            if self.on_utterance:
+                                self.on_utterance(utterance)
+                    else:
                         self._speech_buffer = []
                         self._silence_frames = 0
-                        if self.on_utterance:
-                            self.on_utterance(utterance)
-                else:
-                    self._speech_buffer = []
-                    self._silence_frames = 0
 
     def reset(self):
         with self._lock:
+            self._buffer = b""
             self._speech_buffer = []
             self._is_speech = False
             self._silence_frames = 0
