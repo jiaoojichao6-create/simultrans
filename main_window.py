@@ -190,7 +190,7 @@ class MainWindow(QMainWindow):
 
     def _start_pipeline(self):
         try:
-            self._caption.start()
+            self._capture.start()
             self._playback.start()
             self._pipeline.start()
             self._running = True
@@ -205,7 +205,7 @@ class MainWindow(QMainWindow):
 
     def _stop_pipeline(self):
         self._pipeline.stop()
-        self._caption.stop()
+        self._capture.stop()
         self._playback.stop()
         self._running = False
         self._start_btn.setText("▶ 开始同传")
