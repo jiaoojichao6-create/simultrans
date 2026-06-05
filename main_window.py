@@ -5,6 +5,7 @@ from PyQt5.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
                              QMessageBox, QLineEdit, QInputDialog, QFrame)
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QObject
 from PyQt5.QtGui import QFont
+import os
 from audio.capture import AudioCapture
 from audio.playback import AudioPlayback
 from pipeline.controller import PipelineController
@@ -366,11 +367,13 @@ class MainWindow(QMainWindow):
         if self._input_device_id is None or self._out_dev_combo.count() == 0:
             QMessageBox.warning(self, "提示", "请选择音频输入和输出设备")
             return
+
         out_idx = self._out_dev_combo.currentIndex()
         out_dev_id = self._out_dev_map[out_idx] if 0 <= out_idx < len(self._out_dev_map) else None
         src = self._src_lang.currentText()
         tgt = self._tgt_lang.currentText()
         self._pipeline.set_languages(src, tgt)
+
         try:
             self._capture.start(device_id=self._input_device_id, loopback=self._loopback_mode)
             self._playback.start(device_id=out_dev_id)
@@ -380,7 +383,17 @@ class MainWindow(QMainWindow):
             self._start_btn.setStyleSheet("background-color: #f44336; color: white; padding: 8px 20px; border-radius: 5px;")
             self._status_label.setText(f"同传中: {self._in_dev_combo.currentText()} → {self._out_dev_combo.currentText()}")
         except Exception as e:
-            QMessageBox.critical(self, "启动失败", str(e))
+            # Log full error to file
+            import traceback
+            err_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "error.log")
+            try:
+                with open(err_path, "w", encoding="utf-8") as f:
+                    traceback.print_exc(file=f)
+            except:
+                pass
+            QMessageBox.critical(self, "启动失败",
+                f"错误: {str(e)}\n\n详细错误已保存到 error.log，请发给开发者")
+            self._stop_pipeline()
 
     def _stop_pipeline(self):
         self._pipeline.stop()
