@@ -16,7 +16,6 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        cache: 'pip'
 
     - name: Install dependencies
       run: |
@@ -25,7 +24,23 @@ jobs:
 
     - name: Build EXE
       run: |
-        pyinstaller --onefile --windowed --name "Simultrans" main.py
+        pyinstaller --onefile --windowed --name "Simultrans" `
+          --hidden-import PyQt5.sip `
+          --hidden-import pipeline.controller `
+          --hidden-import pipeline.vad `
+          --hidden-import pipeline.asr `
+          --hidden-import pipeline.translator `
+          --hidden-import pipeline.tts `
+          --hidden-import pipeline.glossary `
+          --hidden-import audio.capture `
+          --hidden-import audio.playback `
+          --hidden-import utils.config `
+          --hidden-import webrtcvad `
+          --hidden-import soundfile `
+          --add-data "audio/*.py;audio" `
+          --add-data "pipeline/*.py;pipeline" `
+          --add-data "utils/*.py;utils" `
+          main.py
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
