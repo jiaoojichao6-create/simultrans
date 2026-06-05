@@ -224,12 +224,6 @@ class MainWindow(QMainWindow):
         audio_group.setLayout(audio_layout)
         layout.addWidget(audio_group)
 
-        # ===== Language & Control =====
-        ctrl_group = QGroupBox("翻译控制")
-        ctrl_group.setFont(QFont("Microsoft YaHei", 10))
-        ctrl_layout = QHBoxLayout()
-        layout.addLayout(dev_layout)
-
         # ===== Language controls =====
         ctrl_layout = QHBoxLayout()
         ctrl_layout.addWidget(QLabel("源语言:"))
