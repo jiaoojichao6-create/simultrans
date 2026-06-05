@@ -17,6 +17,7 @@ class SignalBridge(QObject):
     translated_text = pyqtSignal(str)
     capture_level = pyqtSignal(float)
     playback_level = pyqtSignal(float)
+    lang_detected = pyqtSignal(str)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -83,15 +84,22 @@ class MainWindow(QMainWindow):
         ctrl_layout = QHBoxLayout()
         ctrl_layout.addWidget(QLabel("源语言:"))
         self._src_lang = QComboBox()
-        self._src_lang.addItems(["中文", "英文", "日文"])
-        self._src_lang.setFixedWidth(80)
+        self._src_lang.addItems(["自动检测", "中文", "英文", "日文", "韩文", "法文"])
+        self._src_lang.setCurrentIndex(0)
+        self._src_lang.currentIndexChanged.connect(self._on_source_lang_changed)
+        self._src_lang.setFixedWidth(100)
         ctrl_layout.addWidget(self._src_lang)
         ctrl_layout.addWidget(QLabel("→"))
         self._tgt_lang = QComboBox()
-        self._tgt_lang.addItems(["英文", "中文", "日文"])
+        self._tgt_lang.addItems(["英文", "中文", "日文", "韩文", "法文"])
         self._tgt_lang.setCurrentIndex(0)
         self._tgt_lang.setFixedWidth(80)
         ctrl_layout.addWidget(self._tgt_lang)
+
+        # Auto-detect indicator
+        self._lang_indicator = QLabel("")
+        self._lang_indicator.setStyleSheet("color: #666; font-size: 11px;")
+        ctrl_layout.addWidget(self._lang_indicator)
         ctrl_layout.addSpacing(20)
 
         self._start_btn = QPushButton("▶ 开始同传")
@@ -188,6 +196,19 @@ class MainWindow(QMainWindow):
         self._signals.translated_text.connect(lambda t: self._trans_text.append(t))
         self._signals.capture_level.connect(lambda v: self._in_level.setValue(int(min(v * 200, 100))))
         self._signals.playback_level.connect(lambda v: self._out_level.setValue(int(min(v * 200, 100))))
+        self._signals.lang_detected.connect(self._on_lang_detected)
+
+    def _on_lang_detected(self, lang_code):
+        rev = {"zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文", "fr": "法文"}
+        label = rev.get(lang_code, lang_code)
+        self._lang_indicator.setText(f"检测到: {label} → 翻译中")
+
+    def _on_source_lang_changed(self):
+        text = self._src_lang.currentText()
+        if text == "自动检测":
+            self._lang_indicator.setText("🔄 自动检测中...")
+        else:
+            self._lang_indicator.setText("")
 
     def _refresh_devices(self):
         """Scan and populate audio device dropdowns."""
@@ -244,6 +265,7 @@ class MainWindow(QMainWindow):
             on_original_text=lambda t: self._signals.original_text.emit(t),
             on_translated_text=lambda t: self._signals.translated_text.emit(t),
             on_level=lambda v: self._signals.capture_level.emit(v),
+            on_lang_detected=lambda l: self._signals.lang_detected.emit(l),
         )
 
     def _setup_timers(self):
@@ -270,6 +292,14 @@ class MainWindow(QMainWindow):
             return
         out_idx = self._out_dev_combo.currentIndex()
         out_dev_id = self._out_dev_map[out_idx] if 0 <= out_idx < len(self._out_dev_map) else None
+        # Set languages before starting
+        source = self._src_lang.currentText()
+        target = self._tgt_lang.currentText()
+        if source == "自动检测":
+            self._lang_indicator.setText("🔄 自动检测中...")
+        else:
+            self._lang_indicator.setText("")
+        self._pipeline.set_languages(source, target)
         try:
             self._capture.start(device_id=self._input_device_id, loopback=self._loopback_mode)
             self._playback.start(device_id=out_dev_id)
