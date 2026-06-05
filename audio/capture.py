@@ -1,9 +1,7 @@
-"""Audio capture from soundcard using sounddevice (WASAPI on Windows)."""
+"""Audio capture from any input device (mic, line-in, virtual, loopback)."""
 import sounddevice as sd
 import numpy as np
 import threading
-from queue import Queue
-import time
 
 SAMPLE_RATE = 16000
 CHANNELS = 1
@@ -12,25 +10,48 @@ DTYPE = "float32"
 
 class AudioCapture:
     def __init__(self, callback=None):
-        self.callback = callback  # fn(audio_chunk: np.ndarray)
+        self.callback = callback
         self.stream = None
         self.running = False
         self._level = 0.0
+        self._current_device = None
 
     @staticmethod
-    def list_devices():
-        return sd.query_devices()
-
-    @staticmethod
-    def get_input_devices():
+    def get_all_input_devices():
+        """Return all devices that can be used as input."""
         devices = sd.query_devices()
-        return [(i, d["name"]) for i, d in enumerate(devices) if d["max_input_channels"] > 0]
+        result = []
+        for i, d in enumerate(devices):
+            name = d["name"]
+            if d["max_input_channels"] > 0:
+                result.append((i, name, "input", d))
+            # Also check loopback capability (WASAPI)
+            if "WASAPI" in name and d["max_output_channels"] > 0:
+                result.append((i, f"{name} [回环监听]", "loopback", d))
+        return result
 
-    def start(self, device_id=None):
+    def get_device_list_for_ui(self):
+        """Return list of (device_id, display_name) for UI dropdown."""
+        devices = self.get_all_input_devices()
+        items = []
+        for i, name, dtype, _ in devices:
+            prefix = "🔴" if dtype == "loopback" else "🎤"
+            items.append((i, f"{prefix} {name}"))
+        return items
+
+    def start(self, device_id=None, loopback=False):
         if self.running:
             return
+        self._current_device = device_id
         self.running = True
         try:
+            extra = None
+            if loopback:
+                try:
+                    extra = sd.WasapiSettings(loopback=True)
+                except AttributeError:
+                    pass  # Fallback: loopback not supported
+
             self.stream = sd.InputStream(
                 device=device_id,
                 samplerate=SAMPLE_RATE,
@@ -39,6 +60,7 @@ class AudioCapture:
                 blocksize=BLOCK_SIZE,
                 callback=self._audio_callback,
                 latency="low",
+                extra_settings=extra,
             )
             self.stream.start()
         except Exception as e:

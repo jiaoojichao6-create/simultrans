@@ -23,11 +23,14 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.cfg = load_config()
         self.setWindowTitle("同传翻译系统 v1.0")
-        self.setMinimumSize(700, 550)
+        self.setMinimumSize(700, 600)
+        self._input_device_id = None
+        self._loopback_mode = False
         self._setup_ui()
         self._setup_audio()
         self._setup_pipeline()
         self._setup_timers()
+        self._refresh_devices()
         self._running = False
 
     def _setup_ui(self):
@@ -48,6 +51,20 @@ class MainWindow(QMainWindow):
         title_layout.addWidget(self._settings_btn)
 
         layout.addLayout(title_layout)
+
+        # Audio input device selection
+        dev_layout = QHBoxLayout()
+        dev_layout.addWidget(QLabel("音频输入:"))
+        self._device_combo = QComboBox()
+        self._device_combo.setMinimumWidth(350)
+        self._device_combo.currentIndexChanged.connect(self._on_device_changed)
+        dev_layout.addWidget(self._device_combo)
+        self._refresh_btn = QPushButton("🔄 刷新")
+        self._refresh_btn.setFixedWidth(60)
+        self._refresh_btn.clicked.connect(self._refresh_devices)
+        dev_layout.addWidget(self._refresh_btn)
+        dev_layout.addStretch()
+        layout.addLayout(dev_layout)
 
         # Controls row
         ctrl_layout = QHBoxLayout()
@@ -106,6 +123,7 @@ class MainWindow(QMainWindow):
         self._in_level.setFixedWidth(150)
         self._in_level.setMaximum(100)
         self._in_level.setTextVisible(False)
+        self._in_level.setStyleSheet("QProgressBar::chunk { background-color: #4CAF50; }")
         level_layout.addWidget(self._in_level)
         level_layout.addSpacing(20)
         level_layout.addWidget(QLabel("输出电平:"))
@@ -113,12 +131,13 @@ class MainWindow(QMainWindow):
         self._out_level.setFixedWidth(150)
         self._out_level.setMaximum(100)
         self._out_level.setTextVisible(False)
+        self._out_level.setStyleSheet("QProgressBar::chunk { background-color: #2196F3; }")
         level_layout.addWidget(self._out_level)
         level_layout.addStretch()
         layout.addLayout(level_layout)
 
         # Status
-        self._status_label = QLabel("⏹ 就绪，点击「开始同传」启动")
+        self._status_label = QLabel("⏹ 就绪，选择输入源后点击「开始同传」")
         self._status_label.setStyleSheet("color: #666; font-size: 12px;")
         layout.addWidget(self._status_label)
 
@@ -157,6 +176,34 @@ class MainWindow(QMainWindow):
         self._signals.capture_level.connect(lambda v: self._in_level.setValue(int(min(v * 200, 100))))
         self._signals.playback_level.connect(lambda v: self._out_level.setValue(int(min(v * 200, 100))))
 
+    def _refresh_devices(self):
+        """Scan and populate audio input device dropdown."""
+        self._device_combo.clear()
+        capture = AudioCapture()
+        devices = capture.get_all_input_devices()
+
+        self._device_map = []  # (device_id, is_loopback)
+        last_input = None
+        for i, name, dtype, info in devices:
+            display = f"{'🔴' if dtype == 'loopback' else '🎤'} {name}"
+            self._device_combo.addItem(display)
+            self._device_map.append((i, dtype == "loopback"))
+            if dtype == "input":
+                last_input = len(self._device_map) - 1
+
+        # Select first input device by default
+        if last_input is not None:
+            self._device_combo.setCurrentIndex(last_input)
+        self._on_device_changed()
+
+        count = self._device_combo.count()
+        self._status_label.setText(f"检测到 {count} 个音频输入设备，请选择")
+
+    def _on_device_changed(self):
+        idx = self._device_combo.currentIndex()
+        if 0 <= idx < len(self._device_map):
+            self._input_device_id, self._loopback_mode = self._device_map[idx]
+
     def _setup_audio(self):
         self._capture = AudioCapture(callback=self._on_audio_chunk)
         self._playback = AudioPlayback()
@@ -189,8 +236,11 @@ class MainWindow(QMainWindow):
             self._stop_pipeline()
 
     def _start_pipeline(self):
+        if self._input_device_id is None:
+            QMessageBox.warning(self, "提示", "请先选择一个音频输入设备")
+            return
         try:
-            self._capture.start()
+            self._capture.start(device_id=self._input_device_id, loopback=self._loopback_mode)
             self._playback.start()
             self._pipeline.start()
             self._running = True
@@ -200,6 +250,8 @@ class MainWindow(QMainWindow):
                              padding: 8px 20px; border-radius: 5px; }
                 QPushButton:hover { background-color: #da190b; }
             """)
+            name = self._device_combo.currentText()
+            self._status_label.setText(f"🎧 正在从「{name}」同传翻译...")
         except Exception as e:
             QMessageBox.critical(self, "启动失败", f"音频设备启动失败:\n{str(e)}")
 
@@ -214,6 +266,7 @@ class MainWindow(QMainWindow):
                          padding: 8px 20px; border-radius: 5px; }
             QPushButton:hover { background-color: #45a049; }
         """)
+        self._status_label.setText("⏹ 已停止")
 
     def _update_status(self, status):
         self._status_label.setText(status)
