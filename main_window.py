@@ -91,8 +91,8 @@ class MainWindow(QMainWindow):
         ctrl_layout.addWidget(self._src_lang)
         ctrl_layout.addWidget(QLabel("→"))
         self._tgt_lang = QComboBox()
-        self._tgt_lang.addItems(["英文", "中文", "日文", "韩文", "法文"])
-        self._tgt_lang.setCurrentIndex(0)
+        self._tgt_lang.addItems(["中文", "英文", "日文", "韩文", "法文"])
+        self._tgt_lang.setCurrentIndex(0)  # 默认翻译成中文
         self._tgt_lang.setFixedWidth(80)
         ctrl_layout.addWidget(self._tgt_lang)
 
