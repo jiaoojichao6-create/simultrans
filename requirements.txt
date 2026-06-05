@@ -7,3 +7,5 @@ faster-whisper>=1.0
 edge-tts>=6.0
 requests>=2.28
 soundfile>=0.12
+PyMuPDF>=1.23        # for PDF parsing (glossary import)
+python-docx>=0.8     # for DOCX parsing (glossary import)

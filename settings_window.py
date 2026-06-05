@@ -1,10 +1,14 @@
 """Settings window."""
+import os
 from PyQt5.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPushButton, QTabWidget, QWidget,
-                             QFormLayout, QComboBox, QMessageBox, QGroupBox)
+                             QFormLayout, QComboBox, QMessageBox, QGroupBox,
+                             QListWidget, QTextEdit, QFileDialog)
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from utils.config import load_config, save_config, change_password
+from pipeline.glossary import GlossaryManager
+
 
 class SettingsWindow(QDialog):
     def __init__(self, parent=None):
@@ -86,7 +90,65 @@ class SettingsWindow(QDialog):
         tts_tab.setLayout(tts_layout)
         tabs.addTab(tts_tab, "🔊 语音合成")
 
-        layout.addWidget(tabs)
+        # --- Glossary tab ---
+        gloss_tab = QWidget()
+        gloss_layout = QVBoxLayout()
+
+        # Import section
+        import_layout = QHBoxLayout()
+        import_layout.addWidget(QLabel("导入专业文档:"))
+        self._import_btn = QPushButton("📂 选择文件")
+        self._import_btn.clicked.connect(self._on_import_glossary)
+        import_layout.addWidget(self._import_btn)
+        import_layout.addStretch()
+        gloss_layout.addLayout(import_layout)
+
+        import_hint = QLabel("支持 txt / csv / tsv / pdf / docx，系统自动提取术语")
+        import_hint.setStyleSheet("color: gray; font-size: 11px;")
+        gloss_layout.addWidget(import_hint)
+
+        # Imported files
+        self._gloss_files = QListWidget()
+        self._gloss_files.setMaximumHeight(80)
+        gloss_layout.addWidget(QLabel("已导入的文件:"))
+        gloss_layout.addWidget(self._gloss_files)
+
+        # Manual term entry
+        add_term_layout = QHBoxLayout()
+        self._term_source = QLineEdit()
+        self._term_source.setPlaceholderText("原文术语")
+        add_term_layout.addWidget(self._term_source)
+        add_term_layout.addWidget(QLabel("→"))
+        self._term_target = QLineEdit()
+        self._term_target.setPlaceholderText("翻译")
+        add_term_layout.addWidget(self._term_target)
+        add_btn = QPushButton("添加")
+        add_btn.clicked.connect(self._on_add_term)
+        add_term_layout.addWidget(add_btn)
+        gloss_layout.addLayout(add_term_layout)
+
+        # Term list
+        gloss_layout.addWidget(QLabel("术语表:"))
+        self._gloss_list = QListWidget()
+        gloss_layout.addWidget(self._gloss_list)
+
+        # Action buttons
+        gloss_btn_layout = QHBoxLayout()
+        clear_btn = QPushButton("🗑 清空术语表")
+        clear_btn.clicked.connect(self._on_clear_glossary)
+        gloss_btn_layout.addWidget(clear_btn)
+        gloss_btn_layout.addStretch()
+        refresh_btn = QPushButton("🔄 刷新显示")
+        refresh_btn.clicked.connect(self._refresh_glossary_ui)
+        gloss_btn_layout.addWidget(refresh_btn)
+        gloss_layout.addLayout(gloss_btn_layout)
+
+        gloss_tab.setLayout(gloss_layout)
+        tabs.addTab(gloss_tab, "📖 术语库")
+
+        # Initialize glossary
+        self._glossary_mgr = GlossaryManager()
+        self._refresh_glossary_ui()
 
         # Save/Cancel buttons
         btn_layout = QHBoxLayout()
@@ -99,6 +161,58 @@ class SettingsWindow(QDialog):
         btn_layout.addWidget(cancel_btn)
         layout.addLayout(btn_layout)
         self.setLayout(layout)
+
+    # === Glossary methods ===
+    def _refresh_glossary_ui(self):
+        self._gloss_list.clear()
+        self._gloss_files.clear()
+        terms = self._glossary_mgr.get_terms()
+        for src, tgt in sorted(terms.items()):
+            self._gloss_list.addItem(f"{src}  →  {tgt}")
+        for fname in self._glossary_mgr.get_imported_files():
+            self._gloss_files.addItem(fname)
+        self._gloss_list.addItem(f"━━━ 共 {len(terms)} 条术语 ━━━")
+
+    def _on_import_glossary(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "导入专业文档", "",
+            "文档文件 (*.txt *.csv *.tsv *.pdf *.docx);;所有文件 (*)"
+        )
+        if not path:
+            return
+        result = self._glossary_mgr.import_document(path)
+        if "error" in result:
+            QMessageBox.warning(self, "导入失败", result["error"])
+        else:
+            count = result.get("count", 0)
+            QMessageBox.information(
+                self, "导入成功",
+                f"从文档中提取了 {count} 条术语\n"
+                f"文件名: {os.path.basename(path)}\n"
+                f"术语已加入翻译系统，下次翻译自动生效"
+            )
+            self._refresh_glossary_ui()
+
+    def _on_add_term(self):
+        src = self._term_source.text().strip()
+        tgt = self._term_target.text().strip()
+        if not src or not tgt:
+            QMessageBox.warning(self, "提示", "请填写原文术语和翻译")
+            return
+        self._glossary_mgr.add_term(src, tgt)
+        self._term_source.clear()
+        self._term_target.clear()
+        self._refresh_glossary_ui()
+
+    def _on_clear_glossary(self):
+        reply = QMessageBox.question(
+            self, "确认清空", "确定要清空所有术语吗？",
+            QMessageBox.Yes | QMessageBox.No
+        )
+        if reply == QMessageBox.Yes:
+            self._glossary_mgr.clear_all()
+            self._refresh_glossary_ui()
+            QMessageBox.information(self, "已清空", "术语表已清空")
 
     def _on_change_password(self):
         old = self._old_pw.text()
