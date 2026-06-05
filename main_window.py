@@ -502,12 +502,12 @@ class MainWindow(QMainWindow):
             import traceback
             err_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "error.log")
             try:
-                with open(err_path, "w", encoding="utf-8") as f:
+                with open(err_path, "w", encoding="gbk") as f:
                     traceback.print_exc(file=f)
             except:
                 pass
             QMessageBox.critical(self, "启动失败",
-                f"错误: {str(e)}\n\n详细错误已保存到 error.log，请发给开发者")
+                f"错误: {str(e)}\n\n详细错误已保存到 error.log，请用记事本打开查看")
             self._stop_pipeline()
 
     def _stop_pipeline(self):
