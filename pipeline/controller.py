@@ -8,7 +8,13 @@ from .translator import TranslationEngine
 from .tts import TTSEngine
 
 # Language codes used in the app
-LANG_CODE = {"中文": "zh", "英文": "en", "日文": "ja", "韩文": "ko", "法文": "fr"}
+LANG_CODE = {
+    "中文": "zh", "英文": "en", "日文": "ja", "韩文": "ko",
+    "法文": "fr", "德文": "de", "西班牙文": "es", "葡萄牙文": "pt",
+    "俄文": "ru", "阿拉伯文": "ar", "意大利文": "it",
+    "泰文": "th", "越南文": "vi", "印尼文": "id",
+    "马来文": "ms", "印地文": "hi",
+}
 
 class PipelineController:
     def __init__(self, config, on_status=None, on_original_text=None,

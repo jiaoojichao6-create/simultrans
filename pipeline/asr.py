@@ -11,8 +11,14 @@ WHISPER_LANG_MAP = {
     "zh": "zh", "yue": "zh", "wuu": "zh",
     "en": "en", "ja": "ja", "ko": "ko",
     "fr": "fr", "de": "de", "es": "es",
-    "ru": "ru", "pt": "pt", "it": "it",
-    "th": "th", "vi": "vi", "id": "id",
+    "pt": "pt", "ru": "ru", "ar": "ar",
+    "it": "it", "th": "th", "vi": "vi",
+    "id": "id", "ms": "ms", "hi": "hi",
+    "nl": "nl", "pl": "pl", "tr": "tr",
+    "cs": "cs", "sv": "sv", "da": "da",
+    "fi": "fi", "hu": "hu", "ro": "ro",
+    "uk": "uk", "el": "el", "he": "he",
+    "bn": "bn", "ta": "ta", "te": "te",
 }
 
 class ASRResult:

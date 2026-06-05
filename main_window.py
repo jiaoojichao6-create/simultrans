@@ -84,14 +84,18 @@ class MainWindow(QMainWindow):
         ctrl_layout = QHBoxLayout()
         ctrl_layout.addWidget(QLabel("源语言:"))
         self._src_lang = QComboBox()
-        self._src_lang.addItems(["自动检测", "中文", "英文", "日文", "韩文", "法文"])
+        self._src_lang.addItems(["自动检测", "中文", "英文", "日文", "韩文", "法文",
+                               "德文", "西班牙文", "葡萄牙文", "俄文", "阿拉伯文",
+                               "意大利文", "泰文", "越南文", "印尼文", "马来文", "印地文"])
         self._src_lang.setCurrentIndex(0)
         self._src_lang.currentIndexChanged.connect(self._on_source_lang_changed)
         self._src_lang.setFixedWidth(100)
         ctrl_layout.addWidget(self._src_lang)
         ctrl_layout.addWidget(QLabel("→"))
         self._tgt_lang = QComboBox()
-        self._tgt_lang.addItems(["中文", "英文", "日文", "韩文", "法文"])
+        self._tgt_lang.addItems(["中文", "英文", "日文", "韩文", "法文",
+                                 "德文", "西班牙文", "葡萄牙文", "俄文", "阿拉伯文",
+                                 "意大利文", "泰文", "越南文", "印尼文", "马来文", "印地文"])
         self._tgt_lang.setCurrentIndex(0)  # 默认翻译成中文
         self._tgt_lang.setFixedWidth(80)
         ctrl_layout.addWidget(self._tgt_lang)
@@ -199,7 +203,11 @@ class MainWindow(QMainWindow):
         self._signals.lang_detected.connect(self._on_lang_detected)
 
     def _on_lang_detected(self, lang_code):
-        rev = {"zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文", "fr": "法文"}
+        rev = {"zh": "中文", "en": "英文", "ja": "日文", "ko": "韩文",
+                "fr": "法文", "de": "德文", "es": "西班牙文", "pt": "葡萄牙文",
+                "ru": "俄文", "ar": "阿拉伯文", "it": "意大利文",
+                "th": "泰文", "vi": "越南文", "id": "印尼文",
+                "ms": "马来文", "hi": "印地文"}
         label = rev.get(lang_code, lang_code)
         self._lang_indicator.setText(f"检测到: {label} → 翻译中")
 
