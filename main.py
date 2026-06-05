@@ -6,6 +6,18 @@ import os
 # Add current directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Explicit imports for PyInstaller - forces all modules to be included
+import audio.capture
+import audio.playback
+import pipeline.controller
+import pipeline.vad
+import pipeline.asr
+import pipeline.translator
+import pipeline.tts
+import pipeline.glossary
+import utils.config
+import settings_window
+
 from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 from login import LoginDialog
